@@ -1,5 +1,7 @@
 #server.py
 import socket
+import threading
+import time
 
 HOST = '127.0.0.1'
 PORT = 65432        
@@ -9,14 +11,17 @@ with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
     s.bind((HOST, PORT))#vincula o socket ao endereço e porta definidos
     s.listen()#coloca o socket em modo de escuta
     print(f"Servidor escutando em {HOST}:{PORT}")
+    timenow=time.time()
+    printf(f"{timenow}")
     
     conn, addr = s.accept()#aceita uma conexão de um cliente
     #conn é o novo socket que será usado para a comunicação com o cliente, e addr é uma tupla com o endereço do cliente que se conectou
-
+    
     #usa o novo socket para comunicação
 
     with conn:
         print(f"Conectado por {addr}")
+        
         
         apelido = conn.recv(1024).decode('utf-8')
         print(f"Novo cliente conectado: {apelido}")
