@@ -7,6 +7,7 @@ import queue
 HOST = '127.0.0.1'
 PORT = 55555
 q= queue.Queue()
+
 def thread2():
     lasttime=time.time()
     lasttime2=time.time()
@@ -40,7 +41,7 @@ def thread1():
 
         # decodifica e exibe a mensagem
         mensagem = dados.decode('utf-8')
-        print(f"{apelido}: {mensagem}")
+        print(f"{apelido} {timenow.tm_hour}:{timenow.tm_min}:{timenow.tm_sec}: {mensagem}")
         q.put(mensagem)
 
         # envia uma resposta genérica de volta

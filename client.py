@@ -20,8 +20,8 @@ def mandarcomando(s):
         # pede para o usuário digitar a mensagem
         mensagem = input("> ")
 
-        # se a mensagem for 'sair', o cliente encerra a conexão
-        if mensagem.lower() == 'sair':
+        # se a mensagem for ':quit', o cliente encerra a conexão
+        if mensagem.lower() == ':quit':
             break
 
         # envia a mensagem codificada em bytes
@@ -38,9 +38,11 @@ with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
     try:
         # tenta conectar ao servidor, se o servidor não stiver rodando, essa linha falha
         s.connect((HOST, PORT))
-        print("Conectado ao servidor. Digite suas mensagens. (Digite 'sair' para fechar a conexão)")
+        print("Conectado ao servidor. Digite suas mensagens. (Digite ':quit' para fechar a conexão)")
 
         apelido = input("Digite seu apelido: ")
+        if(apelido == ""):
+            apelido = s.getsockname()[0]
         s.sendall(apelido.encode('utf-8'))
         thread_recepcao = threading.Thread(target=imprimirtempo)
         thread_recepcao.start()
