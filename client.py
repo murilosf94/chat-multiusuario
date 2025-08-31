@@ -2,34 +2,45 @@
 import socket
 import threading
 import time
+import sys
+import os
 
 HOST = '127.0.0.1'
 PORT = 55555
+PORT2 = 55556
+PORT3 = 55557
 
 
 def imprimirtempo():
     while True:
-        tempoagora = s.recv(1024)
+        tempoagora = s3.recv(1024)
         print(f"{tempoagora.decode('utf-8')}")
-        break
+
 
 
 def mandarcomando(s):
+
     while True:
 
         # pede para o usuário digitar a mensagem
-        mensagem = input("> ")
+        mensagem = input("")
 
         # se a mensagem for ':quit', o cliente encerra a conexão
-        if mensagem.lower() == ':quit':
-            break
+
 
         # envia a mensagem codificada em bytes
-        s.sendall(mensagem.encode('utf-8'))
+        s2.sendall(mensagem.encode('utf-8'))
+        if mensagem == ":quit":
+            print("programa encerrado")
+            exit()
+
 
         # aguarda e recebe a resposta do servidor
-        dados = s.recv(1024)
-        print(f"Você digitou: {dados.decode('utf-8')}")  # exibe a resposta do servidor
+
+        dados = s2.recv(1024)
+        dados2 = dados.decode('utf-8')
+        if dados2 != " ":
+            print(f"Você digitou: {dados.decode('utf-8')}")  # exibe a resposta do servidor
 
 
 
@@ -44,6 +55,14 @@ with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         if(apelido == ""):
             apelido = s.getsockname()[0]
         s.sendall(apelido.encode('utf-8'))
+        tempoagora = s.recv(1024)
+        print(f"{tempoagora.decode('utf-8')}")
+
+
+        s2 = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s2.connect((HOST, PORT2))
+        s3 = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s3.connect((HOST, PORT3))
         thread_recepcao = threading.Thread(target=imprimirtempo)
         thread_recepcao.start()
         thread_insercao = threading.Thread(target=mandarcomando, args=(s,))
