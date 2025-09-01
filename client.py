@@ -66,7 +66,7 @@ with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         thread_recepcao.join()
         thread_insercao.join()
 
-        #loop infinito para o cliente ainda enviar mensagens
+        #loop infinito p o cliente ainda enviar mensagens
 
     except ConnectionRefusedError:
         print("Não foi possível conectar. Verifique se o servidor está em execução.")

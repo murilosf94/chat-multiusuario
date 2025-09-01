@@ -72,7 +72,6 @@ def thread1():
             conn3.close()
             break
 
-        #envia uma resposta genérica de volta
         
     print("Conexão encerrada.")
 
