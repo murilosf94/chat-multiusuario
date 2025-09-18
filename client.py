@@ -1,74 +1,90 @@
-# client.py
+#client.py
 import socket
 import threading
-import time
 import sys
-import os
 
 HOST = '127.0.0.1'
-PORT = 55555
-PORT2 = 55556
-PORT3 = 55557
+PORTA = 55555
 
-
-def imprimirtempo():
+def receber_mensagens(socket_cliente):
+    """Lida com o recebimento de mensagens do servidor."""
     while True:
-        tempoagora = s3.recv(1024)
-        print(f"{tempoagora.decode('utf-8')}")
+        try:
+            mensagem = socket_cliente.recv(1024).decode('utf-8')
+            if not mensagem:
+                print("\nConexão com o servidor foi encerrada.")
+                break
+            
+            sys.stdout.write('\r' + ' ' * 60 + '\r')
+            print(f"{mensagem}")
+            sys.stdout.write("> ")
+            sys.stdout.flush()
 
+        except (ConnectionAbortedError, ConnectionResetError):
+            print("\nConexão com o servidor foi perdida.")
+            break
+        except Exception:
+            break
+    
+    print("Pressione ENTER para encerrar o programa.")
 
-def mandarcomando(s):
+def enviar_mensagens(socket_cliente):
+    """Lida com o envio de mensagens para o servidor."""
     while True:
+        try:
+            sys.stdout.write("> ")
+            sys.stdout.flush()
+            mensagem = input()
 
-        #pede para o usuário digitar a mensagem
-        mensagem = input("")
+            if mensagem:
+                socket_cliente.sendall(mensagem.encode('utf-8'))
+            
+            if mensagem.lower() == ":quit":
+                print("Desconectando...")
+                break
+        except (EOFError, KeyboardInterrupt):
+            print("\nEnviando comando para desconectar...")
+            socket_cliente.sendall(":quit".encode('utf-8'))
+            break
+        except Exception:
+            break
 
-        #envia a mensagem codificada em bytes
-        s2.sendall(mensagem.encode('utf-8'))
-        if mensagem == ":quit":
-            print("programa encerrado")
-            exit()
+def principal():
+    """Função principal para iniciar o cliente."""
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as socket_cliente:
+        try:
+            socket_cliente.connect((HOST, PORTA))
+            
+            mensagem_boas_vindas = socket_cliente.recv(1024).decode('utf-8')
+            print(mensagem_boas_vindas)
 
+            if "Limite de clientes" in mensagem_boas_vindas:
+                return
 
-        #aguarda e recebe a resposta do servidor
-        dados = s2.recv(1024)
-        dados2 = dados.decode('utf-8')
-        if dados2 != " ":
-            print(f"Você digitou: {dados.decode('utf-8')}")  #exibe a resposta do servidor
+            #pergunta o apelido e envia para o servidor
+            apelido = input("Digite seu apelido: ")
+            if not apelido:
+                #usa a porta local do cliente para criar um apelido padrão
+                porta_local = socket_cliente.getsockname()[1]
+                apelido = f"Anônimo_{porta_local}"
+            
+            socket_cliente.sendall(apelido.encode('utf-8'))
 
+            #inicia as threads de comunicação
+            thread_recebimento = threading.Thread(target=receber_mensagens, args=(socket_cliente,))
+            thread_envio = threading.Thread(target=enviar_mensagens, args=(socket_cliente,))
 
+            thread_recebimento.start()
+            thread_envio.start()
 
-#cria um obj socket, o socket.AF_INET significa que estamos usando endereços IPv4 e o socket.SOCK_STREAM significa que estamos usando TCP e o with garante que o socket será fechado corretamente depois do bloco de código
-with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-    try:
-        #tenta conectar ao servidor, se o servidor não stiver rodando, essa linha falha
-        s.connect((HOST, PORT))
-        print("Conectado ao servidor. Digite suas mensagens. (Digite ':quit' para fechar a conexão)")
+            thread_envio.join()
+            socket_cliente.close()
+            thread_recebimento.join()
 
-        apelido = input("Digite seu apelido: ")
-        if(apelido == ""):
-            apelido = s.getsockname()[0]
-        s.sendall(apelido.encode('utf-8'))
-        
-        tempoagora = s.recv(1024)
-        print(f"{tempoagora.decode('utf-8')}")
+        except ConnectionRefusedError:
+            print("Não foi possível conectar. Verifique se o servidor está em execução.")
+        except Exception as e:
+            print(f"Ocorreu um erro inesperado: {e}")
 
-
-        s2 = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        s2.connect((HOST, PORT2))
-        s3 = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        s3.connect((HOST, PORT3))
-        
-        thread_recepcao = threading.Thread(target=imprimirtempo)
-        thread_recepcao.start()
-        thread_insercao = threading.Thread(target=mandarcomando, args=(s,))
-        thread_insercao.start()
-        thread_recepcao.join()
-        thread_insercao.join()
-
-        #loop infinito p o cliente ainda enviar mensagens
-
-    except ConnectionRefusedError:
-        print("Não foi possível conectar. Verifique se o servidor está em execução.")
-    except Exception as e:
-        print(f"Ocorreu um erro: {e}")
+if __name__ == "__main__":
+    principal()

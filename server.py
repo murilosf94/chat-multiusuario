@@ -1,118 +1,157 @@
-# server.py
+#server.py
 import socket
 import threading
 import time
-import queue
+import sys
 
 HOST = '127.0.0.1'
-PORT = 55555
-PORT2 = 55556
-PORT3 = 55557
-q = queue.Queue()
+PORTA = 55555
+
+clientes_conectados = []
+apelidos = []
+trava_clientes = threading.Lock()
+
+def obter_horario_atual():
+    """Retorna o horário formatado como HH:MM:SS."""
+    return time.strftime("%H:%M:%S", time.localtime())
+
+def transmitir(mensagem, conexao_remetente=None):
+    """Envia uma mensagem para todos os clientes, exceto o remetente."""
+    clientes_a_remover = []
+    with trava_clientes:
+        for conexao_cliente in list(clientes_conectados):
+            if conexao_cliente != conexao_remetente:
+                try:
+                    conexao_cliente.sendall(mensagem.encode('utf-8'))
+                except:
+                    clientes_a_remover.append(conexao_cliente)
+
+    for conn in clientes_a_remover:
+        remover_cliente(conn)
+
+def remover_cliente(conn):
+    """Remove um cliente das listas e avisa a todos sobre a saída."""
+    apelido_removido = None
+    with trava_clientes:
+        if conn in clientes_conectados:
+            indice = clientes_conectados.index(conn)
+            apelido_removido = apelidos.pop(indice)
+            clientes_conectados.remove(conn)
+            print(f"Usuário '{apelido_removido}' se desconectou.")
+    
+    try:
+        conn.close()
+    except:
+        pass
+
+    if apelido_removido:
+        transmitir(f"{apelido_removido} saiu do chat.", None)
 
 
-def thread2():
-    global apelido
-    lasttime_ping = time.time()
-    while True:
-        #envia a data e hora a cada 60 segundos
-        if time.time() - lasttime_ping > 60:
-            timenow = time.localtime()
-            tempo = f"{timenow.tm_hour}:{timenow.tm_min}:{timenow.tm_sec}"
-            if conn3:
-                conn3.sendall(f"DATA: {tempo}".encode('utf-8'))
-            lasttime_ping = time.time()
-            print(f"Horário: {tempo}")
+def gerenciar_cliente(conn, addr):
+    print(f"Nova conexão de {addr}")
+    
+    mensagem_boas_vindas = f"{obter_horario_atual()}: CONECTADO!! Por favor, informe seu apelido."
+    conn.sendall(mensagem_boas_vindas.encode('utf-8'))
 
-        #processa a fila de mensagens
-        if not q.empty():
-            mensagem_do_cliente = q.get().strip()  #.strip remove espaço extra
+    try:
+        apelido = conn.recv(1024).decode('utf-8').strip()
+        if not apelido:
+            apelido = f"Anônimo_{addr[1]}"
 
-            #lógica para comandos e mensagens
-            if mensagem_do_cliente.startswith(":nome "):
-                novo_nome = mensagem_do_cliente.split(" ", 1)[1]
-                apelido = novo_nome
-                print(f"Usuário alterado para {apelido}")
-                if conn2:
-                    conn2.sendall(" ".encode('utf-8'))
+        with trava_clientes:
+            clientes_conectados.append(conn)
+            apelidos.append(apelido)
+        
+        print(f"Cliente {addr} definiu o apelido como '{apelido}'.")
+        transmitir(f"{apelido} entrou no chat.", conn)
+        conn.sendall("Você entrou no chat!".encode('utf-8'))
 
-            elif mensagem_do_cliente == ":quit":
-                print(f"Usuário {apelido} solicitou desconexão.")
-                conn2.close()
-                conn3.close()
+    except Exception as e:
+        print(f"Erro ao configurar apelido para {addr}: {e}")
+        conn.close()
+        return
+
+    try:
+        while True:
+            mensagem = conn.recv(1024).decode('utf-8')
+            if not mensagem:
                 break
 
+            if mensagem.startswith(':'):
+                if mensagem.lower() == ':quit':
+                    break
+                elif mensagem.lower().startswith(':nome '):
+                    try:
+                        novo_apelido = mensagem.split(" ", 1)[1].strip()
+                        if novo_apelido:
+                            antigo_apelido = ""
+                            with trava_clientes:
+                                #pega o nome antigo e atualiza para o novo na lista global
+                                indice = clientes_conectados.index(conn)
+                                antigo_apelido = apelidos[indice]
+                                apelidos[indice] = novo_apelido
+                            
+                            #atualiza o apelido local para esta thread
+                            apelido = novo_apelido
+
+                            mensagem_notificacao = f"{antigo_apelido} agora é conhecido como {novo_apelido}."
+                            
+                            #log no console do servidor para verificação
+                            print(f"AVISO DE NOME: {mensagem_notificacao}")
+
+                            #envia a notificação para TODOS os clientes, incluindo quem mudou
+                            transmitir(mensagem_notificacao, None)
+                        else:
+                             conn.sendall("Nome não pode ser vazio.".encode('utf-8'))
+                    except IndexError:
+                        conn.sendall("Comando de nome inválido. Use :nome <novo_nome>".encode('utf-8'))
+                else:
+                    conn.sendall(f"Comando '{mensagem}' desconhecido.".encode('utf-8'))
             else:
-                #é uma mensagem normal, não um comando
-                timenow = time.localtime()
-                horario = f"{timenow.tm_hour}:{timenow.tm_min}:{timenow.tm_sec}"
+                mensagem_eco = f"Voce digitou: {mensagem}"
+                conn.sendall(mensagem_eco.encode('utf-8'))
+                
+                mensagem_formatada = f"{apelido} ({obter_horario_atual()}): {mensagem}"
+                print(mensagem_formatada)
+                transmitir(mensagem_formatada, conn)
 
-                #resposta para o próprio cliente (o "eco")
-                eco = f"{mensagem_do_cliente}"
-                if conn2:
-                    conn2.sendall(f"{eco}".encode('utf-8'))
+    except (ConnectionResetError, ConnectionAbortedError):
+        print(f"Conexão com {apelido} perdida abruptamente.")
+    finally:
+        remover_cliente(conn)
 
-                #mensagem que seria enviada a todos os usuários (por enquanto, apenas imprimimos)
-                mensagem_formatada = f"{apelido} ({horario}): {mensagem_do_cliente}"
-                print(f"{mensagem_formatada}")
-
-
-def thread1():
-
+def enviar_horario_periodicamente():
     while True:
+        time.sleep(60)
+        mensagem_horario = f"HORARIO DO SERVIDOR ({obter_horario_atual()})"
+        transmitir(mensagem_horario, None)
 
-        dados = conn2.recv(1024)
+def iniciar_servidor(limite):
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as servidor:
+        servidor.bind((HOST, PORTA))
+        servidor.listen()
+        print(f"Servidor escutando em {HOST}:{PORTA} com limite de {limite} clientes.")
 
-        #decodifica e exibe a mensagem
-        mensagem = dados.decode('utf-8')
-        q.put(mensagem)
-        
-        if mensagem == ":quit":
-            conn2.close()
-            conn3.close()
-            break
+        thread_horario = threading.Thread(target=enviar_horario_periodicamente, daemon=True)
+        thread_horario.start()
 
-        
-    print("Conexão encerrada.")
+        while True:
+            conn, addr = servidor.accept()
+            with trava_clientes:
+                if len(clientes_conectados) >= limite:
+                    print(f"Conexão de {addr} recusada. Limite atingido.")
+                    conn.sendall("Limite de clientes atingido.".encode('utf-8'))
+                    conn.close()
+                    continue
+            
+            thread_cliente = threading.Thread(target=gerenciar_cliente, args=(conn, addr))
+            thread_cliente.start()
 
-
-#cria um obj socket, o socket.AF_INET significa que estamos usando endereços IPv4 e o socket.SOCK_STREAM significa que estamos usando TCP e o with garante que o socket será fechado corretamente depois do bloco de código
-with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-    s.bind((HOST, PORT))  #vincula o socket ao endereço e porta definidos
-    s.listen()  #coloca o socket em modo de escuta
-    print(f"Servidor escutando em {HOST}:{PORT}")
-
-    conn, addr = s.accept()  #aceita uma conexão de um cliente
-    #conn é o novo socket que será usado para a comunicação com o cliente, e addr é uma tupla com o endereço do cliente que se conectou
-
-    #usa o novo socket para comunicação
-
-    with conn:
-        print(f"Conectado por {addr}")
-        
-        timenow = time.localtime()
-        tempo = f"Horário: {timenow.tm_hour}:{timenow.tm_min}:{timenow.tm_sec}:CONECTADO!!"
-        conn.sendall(tempo.encode('utf-8'))
-        print(tempo)
-
-        apelido = conn.recv(1024).decode('utf-8')
-        print(f"Novo cliente conectado: {apelido}")
-        
-        s2 = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        s2.bind((HOST, PORT2))  #vincula o socket ao endereço e porta definidos
-        s2.listen()  #coloca o socket em modo de escuta
-        conn2, addr2 = s2.accept()
-        
-        s3 = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        s3.bind((HOST, PORT3))  #vincula o socket ao endereço e porta definidos
-        s3.listen()  #coloca o socket em modo de escuta
-        conn3, addr3 = s3.accept()
-        
-        conn.close()
-        
-        thread_recepcao = threading.Thread(target=thread2)
-        thread_recepcao.start()
-        thread_insercao = threading.Thread(target=thread1)
-        thread_insercao.start()
-        thread_recepcao.join()
-        thread_insercao.join()
+if __name__ == "__main__":
+    try:
+        limite_clientes = int(sys.argv[1]) if len(sys.argv) > 1 else 5
+    except (IndexError, ValueError):
+        print("Uso: python servidor.py <limite_de_clientes>")
+        limite_clientes = 5
+    iniciar_servidor(limite_clientes)
