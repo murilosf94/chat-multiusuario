@@ -23,7 +23,9 @@ def receber_mensagens(socket_cliente):
         except (ConnectionAbortedError, ConnectionResetError):
             print("\nConexão com o servidor foi perdida.")
             break
-        except Exception:
+        # ...
+        except Exception as e:
+            print(f"\nOcorreu um erro ao receber mensagens: {e}")
             break
     
     print("Pressione ENTER para encerrar o programa.")
@@ -46,7 +48,8 @@ def enviar_mensagens(socket_cliente):
             print("\nEnviando comando para desconectar...")
             socket_cliente.sendall(":quit".encode('utf-8'))
             break
-        except Exception:
+        except Exception as e:
+            print(f"\nOcorreu um erro ao enviar mensagens: {e}")
             break
 
 def principal():

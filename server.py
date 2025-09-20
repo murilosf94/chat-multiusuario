@@ -12,8 +12,8 @@ apelidos = []
 trava_clientes = threading.Lock()
 
 def obter_horario_atual():
-    """Retorna o horário formatado como HH:MM:SS."""
-    return time.strftime("%H:%M:%S", time.localtime())
+    """Retorna data e horário formatados como DD/MM/AAAA HH:MM:SS."""
+    return time.strftime("%d/%m/%Y %H:%M:%S", time.localtime())
 
 def transmitir(mensagem, conexao_remetente=None):
     """Envia uma mensagem para todos os clientes, exceto o remetente."""
@@ -23,7 +23,8 @@ def transmitir(mensagem, conexao_remetente=None):
             if conexao_cliente != conexao_remetente:
                 try:
                     conexao_cliente.sendall(mensagem.encode('utf-8'))
-                except:
+                except (socket.error, BrokenPipeError) as e:
+                    print(f"Erro ao enviar mensagem para um cliente: {e}. Agendando remoção.")
                     clientes_a_remover.append(conexao_cliente)
 
     for conn in clientes_a_remover:
@@ -41,8 +42,8 @@ def remover_cliente(conn):
     
     try:
         conn.close()
-    except:
-        pass
+    except Exception as e:
+        print(f"Erro ao fechar a conexão do cliente: {e}")
 
     if apelido_removido:
         transmitir(f"{apelido_removido} saiu do chat.", None)
@@ -50,14 +51,14 @@ def remover_cliente(conn):
 
 def gerenciar_cliente(conn, addr):
     print(f"Nova conexão de {addr}")
-    
-    mensagem_boas_vindas = f"{obter_horario_atual()}: CONECTADO!! Por favor, informe seu apelido."
+
+    mensagem_boas_vindas = f"{obter_horario_atual()}: CONECTADO!!"
     conn.sendall(mensagem_boas_vindas.encode('utf-8'))
 
     try:
         apelido = conn.recv(1024).decode('utf-8').strip()
         if not apelido:
-            apelido = f"Anônimo_{addr[1]}"
+            apelido = f"{addr[0]}:{addr[1]}"
 
         with trava_clientes:
             clientes_conectados.append(conn)
@@ -74,47 +75,57 @@ def gerenciar_cliente(conn, addr):
 
     try:
         while True:
-            mensagem = conn.recv(1024).decode('utf-8')
-            if not mensagem:
-                break
-
-            if mensagem.startswith(':'):
-                if mensagem.lower() == ':quit':
+            try:
+                mensagem = conn.recv(1024).decode('utf-8')
+                if not mensagem:
                     break
-                elif mensagem.lower().startswith(':nome '):
-                    try:
-                        novo_apelido = mensagem.split(" ", 1)[1].strip()
-                        if novo_apelido:
-                            antigo_apelido = ""
-                            with trava_clientes:
-                                #pega o nome antigo e atualiza para o novo na lista global
-                                indice = clientes_conectados.index(conn)
-                                antigo_apelido = apelidos[indice]
-                                apelidos[indice] = novo_apelido
-                            
-                            #atualiza o apelido local para esta thread
-                            apelido = novo_apelido
 
-                            mensagem_notificacao = f"{antigo_apelido} agora é conhecido como {novo_apelido}."
-                            
-                            #log no console do servidor para verificação
-                            print(f"AVISO DE NOME: {mensagem_notificacao}")
+                if mensagem.startswith(':'):
+                    if mensagem.lower() == ':quit':
+                        break
+                    elif mensagem.lower().startswith(':nome '):
+                        try:
+                            novo_apelido = mensagem.split(" ", 1)[1].strip()
+                            if novo_apelido:
+                                antigo_apelido = ""
+                                with trava_clientes:
+                                    #pega o nome antigo e atualiza para o novo na lista global
+                                    indice = clientes_conectados.index(conn)
+                                    antigo_apelido = apelidos[indice]
+                                    apelidos[indice] = novo_apelido
+                                
+                                #atualiza o apelido local para esta thread
+                                apelido = novo_apelido
 
-                            #envia a notificação para TODOS os clientes, incluindo quem mudou
-                            transmitir(mensagem_notificacao, None)
-                        else:
-                             conn.sendall("Nome não pode ser vazio.".encode('utf-8'))
-                    except IndexError:
-                        conn.sendall("Comando de nome inválido. Use :nome <novo_nome>".encode('utf-8'))
+                                mensagem_notificacao = f"{antigo_apelido} agora é conhecido como {novo_apelido}."
+                                
+                                #log no console do servidor para verificação
+                                print(f"AVISO DE NOME: {mensagem_notificacao}")
+
+                                #envia a notificação para TODOS os clientes, incluindo quem mudou
+                                transmitir(mensagem_notificacao, None)
+                            else:
+                                conn.sendall("Nome não pode ser vazio.".encode('utf-8'))
+                        except IndexError:
+                            conn.sendall("Comando de nome inválido. Use :nome <novo_nome>".encode('utf-8'))
+                    else:
+                        conn.sendall(f"Comando '{mensagem}' desconhecido.".encode('utf-8'))
                 else:
-                    conn.sendall(f"Comando '{mensagem}' desconhecido.".encode('utf-8'))
-            else:
-                mensagem_eco = f"Voce digitou: {mensagem}"
-                conn.sendall(mensagem_eco.encode('utf-8'))
-                
-                mensagem_formatada = f"{apelido} ({obter_horario_atual()}): {mensagem}"
-                print(mensagem_formatada)
-                transmitir(mensagem_formatada, conn)
+                    mensagem_eco = f"Voce digitou: {mensagem}"
+                    conn.sendall(mensagem_eco.encode('utf-8'))
+                    
+                    mensagem_formatada = f"{apelido} ({obter_horario_atual()}): {mensagem}"
+                    print(mensagem_formatada)
+                    transmitir(mensagem_formatada, conn)
+                        
+            except UnicodeDecodeError:
+                print(f"Cliente {apelido} enviou dados mal formatados. Ignorando.")
+                # Envia uma mensagem de aviso ao cliente
+                conn.sendall("Erro: Por favor, envie apenas texto no formato UTF-8.".encode('utf-8'))
+                continue # Pula para a próxima iteração do loop
+            except (ConnectionResetError, ConnectionAbortedError):
+                print(f"Conexão com {apelido} perdida abruptamente.")
+                break # Sai do loop para finalizar a thread
 
     except (ConnectionResetError, ConnectionAbortedError):
         print(f"Conexão com {apelido} perdida abruptamente.")
@@ -124,7 +135,7 @@ def gerenciar_cliente(conn, addr):
 def enviar_horario_periodicamente():
     while True:
         time.sleep(60)
-        mensagem_horario = f"HORARIO DO SERVIDOR ({obter_horario_atual()})"
+        mensagem_horario = f"DATA E HORARIO DO SERVIDOR ({obter_horario_atual()})"
         transmitir(mensagem_horario, None)
 
 def iniciar_servidor(limite):
