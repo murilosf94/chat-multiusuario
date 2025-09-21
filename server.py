@@ -105,7 +105,7 @@ def gerenciar_cliente(conn, addr):
                                 mensagem_notificacao = f"{antigo_apelido} agora é conhecido como {novo_apelido}."
                                 
                                 #avisa no console do servidor
-                                print(f"AVISO DE NOME: {mensagem_notificacao}")
+                                print(f"AVISO DE TROCA DE APELIDO: {mensagem_notificacao}")
 
                                 #envia a notificação para todos os clientes, incluindo quem mudou
                                 transmitir(mensagem_notificacao, None)
