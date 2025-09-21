@@ -1,4 +1,3 @@
-#client.py
 import socket
 import threading
 import sys
@@ -6,16 +5,17 @@ import sys
 HOST = '127.0.0.1'
 PORTA = 55555
 
+#fica em um loop infinito esperando por mensagens do servidor
 def receber_mensagens(socket_cliente):
     """Lida com o recebimento de mensagens do servidor."""
     while True:
         try:
-            mensagem = socket_cliente.recv(1024).decode('utf-8')
-            if not mensagem:
+            mensagem = socket_cliente.recv(1024).decode('utf-8') #decodifica a mensagem recebida
+            if not mensagem: #se a mensagem for vazia, o servidor fechou a conexao
                 print("\nConexão com o servidor foi encerrada.")
                 break
-            
-            sys.stdout.write('\r' + ' ' * 60 + '\r')
+
+            sys.stdout.write('\r' + ' ' * 60 + '\r') #limpa a linha atual
             print(f"{mensagem}")
             sys.stdout.write("> ")
             sys.stdout.flush()
@@ -23,25 +23,26 @@ def receber_mensagens(socket_cliente):
         except (ConnectionAbortedError, ConnectionResetError):
             print("\nConexão com o servidor foi perdida.")
             break
-        # ...
+
         except Exception as e:
             print(f"\nOcorreu um erro ao receber mensagens: {e}")
             break
     
     print("Pressione ENTER para encerrar o programa.")
 
+#essa thread fica em loop ininito esperando por algum input do usuario
 def enviar_mensagens(socket_cliente):
     """Lida com o envio de mensagens para o servidor."""
     while True:
         try:
             sys.stdout.write("> ")
             sys.stdout.flush()
-            mensagem = input()
+            mensagem = input() #espera o usuario digitar algo
 
             if mensagem:
-                socket_cliente.sendall(mensagem.encode('utf-8'))
+                socket_cliente.sendall(mensagem.encode('utf-8')) #codifica a mensagem para o formato de bytes antes de enviar
             
-            if mensagem.lower() == ":quit":
+            if mensagem.lower() == ":quit": #se o usuario digitar :quit, desconecta
                 print("Desconectando...")
                 break
         except (EOFError, KeyboardInterrupt):
@@ -52,8 +53,10 @@ def enviar_mensagens(socket_cliente):
             print(f"\nOcorreu um erro ao enviar mensagens: {e}")
             break
 
-def principal():
-    """Função principal para iniciar o cliente."""
+
+def main():
+    """Função main para iniciar o cliente."""
+    #cria o socket do cliente e tenta conectar ao servidor
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as socket_cliente:
         try:
             socket_cliente.connect((HOST, PORTA))
@@ -69,7 +72,7 @@ def principal():
             if not apelido:
                 #usa a porta local do cliente para criar um apelido padrão
                 porta_local = socket_cliente.getsockname()[1]
-                apelido = f"Anônimo_{porta_local}"
+                apelido = f"Usuário {porta_local}"
             
             socket_cliente.sendall(apelido.encode('utf-8'))
 
@@ -80,14 +83,13 @@ def principal():
             thread_recebimento.start()
             thread_envio.start()
 
-            thread_envio.join()
-            socket_cliente.close()
-            thread_recebimento.join()
-
+            thread_envio.join() #espera a thread de envio terminar (quando o usuario digitar :quit)
+            socket_cliente.close() #fecha o socket do cliente
+            thread_recebimento.join() #espera a thread de recebimento terminar
         except ConnectionRefusedError:
             print("Não foi possível conectar. Verifique se o servidor está em execução.")
         except Exception as e:
             print(f"Ocorreu um erro inesperado: {e}")
 
 if __name__ == "__main__":
-    principal()
+    main()
