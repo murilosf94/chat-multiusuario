@@ -1,3 +1,6 @@
+#PROJETO FINAL - CHAT MULTIUSUARIO
+#Murilo de Souza Freitas - 23012056
+#Gabriel Geraldo Mazolli - 23011007
 import socket
 import threading
 import time
